@@ -1,5 +1,6 @@
 #!/usr/bin/python3
 import os
+import os.path
 import pickle
 import vk_api
 import random
@@ -23,17 +24,21 @@ chname, addlan, dellan = 'Я поменяль имя','Добавить язык
 chlang, ediwor, delwor  = 'Очепятка в языке','Изменить слово','Удалить слово'
 icmind = 'Я передумаль, Фиби=('
 love,evol = 'Любовь-Love','Love-Любовь'
+tss = 0
 print('Keyboards creating...')
 #СОЗДАЕМ КЛАВИАТУРУ СТОП
 stopk = VkKeyboard(one_time=False)
 stopk.add_button('Стоп!',color=VkKeyboardColor.NEGATIVE)
 #СОЗДАЕМ КЛАВИАТУРУ ГЛАВНОГО МЕНЮ
 adwords,shwords,chwords,edwords = 'Пополнить словарь','Покажи мой словарь','Проверь слова, Фиби!=)','Редактировать'
+reminme = 'Напомни мне'
 Mkeyboard = VkKeyboard(one_time=False)
 Mkeyboard.add_button(adwords,color=VkKeyboardColor.POSITIVE)
 Mkeyboard.add_button(shwords,color=VkKeyboardColor.POSITIVE)
 Mkeyboard.add_line()
 Mkeyboard.add_button(chwords,color=VkKeyboardColor.POSITIVE)
+Mkeyboard.add_line()
+Mkeyboard.add_button(reminme,color=VkKeyboardColor.POSITIVE)
 Mkeyboard.add_line()
 Mkeyboard.add_button(edwords,color=VkKeyboardColor.NEGATIVE)
 #СОЗДАЕМ КЛАВИАТУРУ МЕНЮ РЕДАКТИРОВАНИЯ
@@ -70,22 +75,27 @@ longpoll = VkLongPoll(vk)
 print('Function initialization...')
 
 class WriteFirst:#СОЗДАЕМ ОТДЕЛЬНЫЙ ПОТОК ДЛЯ ФУНКЦИИ "ПИШУ ПЕРВОЙ"
-    def __init__(self,interval = 3600):
+    def __init__(self,interval = 60):
         self.interval = interval
         thread = threading.Thread(target=self.chkTi,args=())
         thread.daemon = True
         thread.start()
 
     def chkTi(self):
+        global tss
         while True:
+            nowt = datetime.datetime.now()
+            dtm = [nowt.month,nowt.day,nowt.hour,nowt.minute]
+            #WRITEFIRST
             try:
+                tss +=1
                 wtf = pload('writefirst')
                 print('LAST ACTIVITY DB LOADED')
-                nowt = datetime.datetime.now()
-                dtm = [nowt.month,nowt.day]
-                if nowt.hour >=21:
-                    for uid in wtf.keys():
-                        if (abs(dtm[0]-wtf[uid][0])+abs(dtm[1]-wtf[uid][1]))>=1:
+                if tss == 90:
+                    newmes(214708790,'All good!');tss =0
+                for uid in wtf.keys():
+                    if dtm[0]>wtf[uid][0] or dtm[1]>wtf[uid][1]:
+                        if dtm[2] >= wtf[uid][2] and dtm[3] > wtf[uid][3]:
                             wtf[uid]=dtm
                             pdump('writefirst',wtf)
                             tempu = pload(uid)
@@ -97,6 +107,23 @@ class WriteFirst:#СОЗДАЕМ ОТДЕЛЬНЫЙ ПОТОК ДЛЯ ФУНКЦ
                             newmes(uid,out,stopk)
             except:
                 print('NO DB YET')
+            #НАПОМИНАНИЯ
+            try:
+                if os.path.isfile(path + 'reminder.pkl'):
+                    tmpr = pload('reminder')
+                    print(tmpr)
+                    for mess in tmpr.keys():
+                        if dtm[0]==tmpr[mess][1] and dtm[1]==tmpr[mess][2] and dtm[2]>=tmpr[mess][3] and dtm[3]>=tmpr[mess][4]:
+                            newmes(tmpr[mess][0],'Эй!')
+                            newmes(tmpr[mess][0],mess)
+                            newmes(tmpr[mess][0],'Нужно было напомнить.')
+                            tmpr.pop(mess,'FUCK')
+                            pdump('reminder',tmpr)
+                            break
+                else: 
+                    print('NO REMINDERS YET')
+            except:
+                print('NO REMINDERS DB')
             time.sleep(self.interval)
 
 def formdict(uid,idtemp, i=0,out =''): #ПОСТРОЕНИЕ МАССИВА СЛОВ ДЛЯ ОПРОСА
@@ -126,23 +153,26 @@ def formdict(uid,idtemp, i=0,out =''): #ПОСТРОЕНИЕ МАССИВА СЛ
 def formanswer(uid,message): #ФУНКЦИЯ ФОРМИРОВАНИЯ ОТВЕТОВ
     try:
         global idtemp
+        now = datetime.datetime.now()
+        ptu = path + str(uid) +'.pkl'
         print("\nUser ID: \t" + str(uid) +"\nUser message:\n" + message)
         #ПЫТАЕМСЯ ЗАГРУЗИТЬ ДАННЫЕ ПОЛЬЗОВАТЕЛЯ С ЛОКАЛЬНОГО ХРАНИЛИЩА
-        try: idtemp = pload(uid)
-        except: pass
-        #ОБНУЛЕНИЕ ИГРОВЫХ ПЕРЕМЕННЫХ
-        if idtemp['action'] == 'mainmenu':
+        if os.path.isfile(ptu):idtemp = pload(uid)
+        else: idtemp = {'action':'intro','langs':{}}
+        
+        if idtemp['action'] == 'mainmenu':#ОБНУЛЕНИЕ ИГРОВЫХ ПЕРЕМЕННЫХ
             idtemp['chkt'],idtemp['%'],idtemp['stlen'],idtemp['chch'] = 2,0,0,'NONE'
             idtemp['dict'] = []
-        #ЗНАКОМСТВО
-        if message.lower() in ['start','начать','привет']:
+            idtemp['remi'] = ''
+        
+        if message.lower() in ['start','начать','привет']:#ЗНАКОМСТВО
             idtemp['action'],idtemp['uid'] = 'intro0',uid
             out = ('Привет, меня зовут Фиби и я буду твоим персональным помощником в изучении языка. ' +
                     'Мы с тобой будем учить слова и с этого дня я от тебя не отцеплюсь! =)' +
                     'Я представилась, а как обращаться к тебе?)')
             newmes(uid,out)
-        #ПОКАЖИ МОЙ СЛОВАРЬ
-        elif message == shwords:
+        
+        elif message == shwords:#ПОКАЖИ МОЙ СЛОВАРЬ
             out = 'Хорошо, вот твой словарь, %s:\n'%idtemp['uname']
             for lang in idtemp['langs'].keys():
                 out+='\n'
@@ -232,7 +262,10 @@ def formanswer(uid,message): #ФУНКЦИЯ ФОРМИРОВАНИЯ ОТВЕТ
                 out = 'Отличный выбор, %s!\nСколько слов? ответь цифрой 1 до %d'%(idtemp['uname'],len(x))
                 newmes(uid,out,stopk)
             elif message.isdigit(): idtemp = formdict(uid,idtemp,int(message))
-
+        #ОБНОВЛЕНИЕ 1. НАПОМНИТЬ МНЕ
+        elif message == reminme:
+            idtemp['action'] = 'remme0'
+            newmes(uid,'О чем тебе напомнить, %s?'%idtemp['uname'])
 
         elif message == 'show1': #ВЫВОД НА ТЕРМИНАЛ ДАННЫХ ПОЛЬЗОВАТЕЛЯ
             for language in idtemp['langs']:
@@ -260,7 +293,7 @@ def formanswer(uid,message): #ФУНКЦИЯ ФОРМИРОВАНИЯ ОТВЕТ
                 t = pload('writefirst')
                 print('\n\nDB "SHE WRITES FIRST":')
                 for key in t.keys():
-                    print('%s:\t%d.%d'%(key,t[key][1],t[key][0]))
+                    print('%s:\t%d.%d %d:%d'%(key,t[key][1],t[key][0],t[key][2],t[key][3]))
                 print()
             except: print('Oops...')
         elif message == 'restart1': #ПЕРЕЗАГРУЗКА
@@ -335,14 +368,39 @@ def formanswer(uid,message): #ФУНКЦИЯ ФОРМИРОВАНИЯ ОТВЕТ
                     out = 'Ошибка! Точность: %.2f'%cur
                     out += '\nПостарайся ещё, слово: %s (%s)'%(idtemp['dict'][0][idtemp['chkt']],idtemp['dict'][0][2])
                     newmes(uid,out,stopk)
+            #ОБНОВЛЕНИЕ. НАПОМНИ МНЕ
+            elif idtemp['action'] == 'remme0':
+                idtemp['action'] = 'remme1'
+                idtemp['remi'] = message
+                
+                out = """Отлично, теперь укажи дату в формате: %d.%d.%d.%d  где:
+                %d - Месяц
+                %d - Число
+                %d - Час
+                %d - Минута
+                Не используй нули и пробелы а то я запутаюсь =("""%(now.month,now.day,now.hour,now.minute,
+                now.month,now.day,now.hour,now.minute)
+
+                newmes(uid,out)
+            elif idtemp['action'] == 'remme1':
+                idtemp['action'] = 'mainmenu'
+                dt = message.split('.')
+                ptr = path + 'reminder.pkl'
+                if os.path.isfile(ptr):tmpr = pload('reminder')
+                else: tmpr = {idtemp['remi']:[uid,dt[0],dt[1],dt[2],dt[3]]}
+                tmpr[idtemp['remi']] = [uid,int(dt[0]),int(dt[1]),int(dt[2]),int(dt[3])]
+                pdump('reminder',tmpr)
+                out='Хорошо, %s. Я напомню'%idtemp['uname'] 
+                newmes(uid,out,Mkeyboard)
+
+
         #WRITEFIRST
-        now = datetime.datetime.now()
         wtfst ={}
         try:
             wtfst = pload('writefirst')
         except:
             pdump('writefirst',wtfst)
-        wtfst[uid] = [now.month,now.day]
+        wtfst[uid] = [now.month,now.day, now.hour,now.minute]
         pdump('writefirst',wtfst)
 
         pdump(uid,idtemp)
