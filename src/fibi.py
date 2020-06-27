@@ -25,7 +25,7 @@ chname, addlan, dellan = 'Я поменяль имя','Добавить язык
 chlang, ediwor, delwor  = 'Очепятка в языке','Изменить слово','Удалить слово'
 icmind = 'Я передумаль, Фиби=('
 love,evol = 'Любовь-Love','Love-Любовь'
-tss = 1
+tss = 0
 print('Keyboards creating...')
 #СОЗДАЕМ КЛАВИАТУРУ СТОП
 stopk = VkKeyboard(one_time=False)
@@ -75,7 +75,7 @@ vk = vk_api.VkApi(token=token)
 longpoll = VkLongPoll(vk)
 print('Function initialization...')
 
-class WriteFirst:#СОЗДАЕМ ОТДЕЛЬНЫЙ ПОТОК ДЛЯ ФУНКЦИИ "ПИШУ ПЕРВОЙ"
+class WriteFirst:#СОЗДАЕМ ОТДЕЛЬНЫЙ ПОТОК ДЛЯ ФУНКЦИИ "ПИШУ ПЕРВОЙ" И "НАПОМНИ МНЕ"
     def __init__(self,interval = 60):
         self.interval = interval
         thread = threading.Thread(target=self.chkTi,args=())
@@ -93,7 +93,7 @@ class WriteFirst:#СОЗДАЕМ ОТДЕЛЬНЫЙ ПОТОК ДЛЯ ФУНКЦ
                 wtf = pload('writefirst')
                 print('LAST ACTIVITY DB LOADED')
                 if tss == 90:
-                    newmes(214708790,'All good!');tss =1
+                    newmes(214708790,'All good!');tss =0
                 for uid in wtf.keys():
                     if dtm[0]>wtf[uid][0] or dtm[1]>wtf[uid][1]:
                         if dtm[2] >= wtf[uid][2] and dtm[3] > wtf[uid][3]:
@@ -171,10 +171,13 @@ def formanswer(uid,message): #ФУНКЦИЯ ФОРМИРОВАНИЯ ОТВЕТ
         
         elif message == shwords:#ПОКАЖИ МОЙ СЛОВАРЬ
             tempOUT = 'Хорошо, вот твой словарь, %s:\n'%idtemp['uname']
+            count = 0
             for lang in idtemp['langs'].keys():
-                tempOUT += '\n%s:\n'%lang
+                count += len(idtemp['langs'][lang])
+                tempOUT += '\n%s (слов - %d):\n'%(lang,len(idtemp['langs'][lang]))
                 for word in idtemp['langs'][lang]:
                     tempOUT += '%s-%s\n'%(word[0],word[1])
+            tempOUT += '\nВсего слов - %d'%count
 
         elif message == adwords:#ПОПОЛНИТЬ СЛОВАРЬ
             idtemp['action'],tempOUT,tempKEY = 'adwords','Окей, но всё по порядку, %s =) Какой язык?'%idtemp['uname'],buildkey(1,idtemp['langs'])
