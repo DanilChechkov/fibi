@@ -1,5 +1,6 @@
-#!/usr/bin/python3
+#!/usr/bin/env python3
 import os
+import sys
 import os.path
 import pickle
 import vk_api
@@ -7,6 +8,7 @@ import random
 import datetime
 import time
 import threading
+from subprocess import Popen
 from vk_api.longpoll import VkLongPoll,VkEventType
 from vk_api.keyboard import VkKeyboard, VkKeyboardColor
 from vk_api.utils import get_random_id
@@ -87,21 +89,22 @@ class WriteFirst:#СОЗДАЕМ ОТДЕЛЬНЫЙ ПОТОК ДЛЯ ФУНКЦ
         while True:
             nowt = datetime.datetime.now()
             dtm = [nowt.month,nowt.day,nowt.hour,nowt.minute]
+            print(nowt.strftime('%d-%m-%Y\t%H:%M'))
             #WRITEFIRST
             try:
-                tss +=1
+                tss += 1
                 wtf = pload('writefirst')
-                print('LAST ACTIVITY DB LOADED')
                 if tss == 90:
-                    newmes(214708790,'All good!');tss =0
+                    newmes(214708790,'All good!')
+                    tss = 0
                 for uid in wtf.keys():
-                    if dtm[0]>wtf[uid][0] or dtm[1]>wtf[uid][1]:
-                        if dtm[2] >= wtf[uid][2] and dtm[3] > wtf[uid][3]:
+                    if (dtm[0]>wtf[uid][0] or dtm[1]>wtf[uid][1]) and (dtm[2] >= wtf[uid][2] and dtm[3] > wtf[uid][3]):
                             wtf[uid]=dtm
                             pdump('writefirst',wtf)
                             tempu = pload(uid)
-                            tempu['%'], tempu['chkt'],tempu['chch'] = 0,1,'!!!ВСЕ!!!'
-                            tempu['action'] = 'chwords1'
+                            ch = {'%':0,'chkt':1,'chch':'!!!ВСЕ!!!','action':'chwords1'}
+                            for key in ch.keys():
+                                tempu[key] = ch[key]
                             pdump(uid,tempu)
                             x = tempu['langs'][min(tempu['langs'])]
                             out = 'Мы не общались больше суток, %s! Я тебе больше не нужна?=(\nСыграем? Загадай число от 1 до %d'%(tempu['uname'],len(x))
@@ -141,30 +144,31 @@ def formdict(uid,idtemp, i=0,out =''): #ПОСТРОЕНИЕ МАССИВА СЛ
         idtemp['stlen'],idtemp['action'] = len(idtemp['dict']),'PLAYN'
         out += 'Я буду писать тебе слово, ты будешь писать ответ, мы подсчитаем процент правильных ответов вместе! Ты сможешь!)'
         out +='\nВсего слов: %s'%idtemp['stlen']
-        newmes(uid,out,stopk)
+        newmes(uid,out)
         newmes(uid, 'Я начинаю: %s(%s)'%(idtemp['dict'][0][idtemp['chkt']],idtemp['dict'][0][2]) ,stopk)
     except:
-        idtemp['action']='mainmenu'
-        newmes(uid,'Oops... Broken x(',Mkeyboard)
-    return idtemp
+        newmes(uid,'Oops... Broken x(')#,Mkeyboard)
+        return idtemp
 
 def formanswer(uid,message): #ФУНКЦИЯ ФОРМИРОВАНИЯ ОТВЕТОВ
     try:
         global idtemp,wtfst
-        tempOUT,tempKEY = '', None
+        tempOUT = ''
+        tempKEY = None
         now = datetime.datetime.now()
         ptu = path + str(uid) +'.pkl'
-        print("\nUser ID: \t" + str(uid) +"\nUser message:\n" + message)
+        print(now.strftime('%d-%m-%Y\t%H:%M'),"Chpon'k",sep='\t')
         #ПЫТАЕМСЯ ЗАГРУЗИТЬ ДАННЫЕ ПОЛЬЗОВАТЕЛЯ С ЛОКАЛЬНОГО ХРАНИЛИЩА
         if os.path.isfile(ptu):idtemp = pload(uid)
         else: idtemp = {'action':'intro','langs':{}}
         
         if idtemp['action'] == 'mainmenu':#ОБНУЛЕНИЕ ИГРОВЫХ ПЕРЕМЕННЫХ
-            idtemp['chkt'],idtemp['%'],idtemp['stlen'],idtemp['chch'],idtemp['remi'] = 2,0,0,'NONE',''
-            idtemp['dict'] = []
+            ch0 = {'chkt':2,'%':0,'stlen':0,'chch':'NONE','remi':'','dict':[]}
+            for key in ch0.keys(): idtemp[key] = ch0[key]
         
         if message.lower() in ['start','начать','привет']:#ЗНАКОМСТВО
-            idtemp['action'],idtemp['uid'] = 'intro0',uid
+            idtemp['uid'] = uid
+            idtemp['action'] = 'intro0'
             tempOUT = ('Привет, меня зовут Фиби и я буду твоим персональным помощником в изучении языка. ' +
                     'Мы с тобой будем учить слова и с этого дня я от тебя не отцеплюсь! =)' +
                     'Я представилась, а как обращаться к тебе?)')
@@ -180,38 +184,38 @@ def formanswer(uid,message): #ФУНКЦИЯ ФОРМИРОВАНИЯ ОТВЕТ
             tempOUT += '\nВсего слов - %d'%count
 
         elif message == adwords:#ПОПОЛНИТЬ СЛОВАРЬ
-            idtemp['action'],tempOUT,tempKEY = 'adwords','Окей, но всё по порядку, %s =) Какой язык?'%idtemp['uname'],buildkey(1,idtemp['langs'])
+            idtemp['action'] = 'adwords'
+            tempOUT = 'Окей, но всё по порядку, %s =) Какой язык?'%idtemp['uname']
+            tempKEY = buildkey(1,idtemp['langs'])
         #ПОПОЛНИТЬ СЛОВАРЬ|УДАЛИТЬ СЛОВАРЬ|ИЗМЕНИТЬ СЛОВАРЬ|ИЗМЕНИТЬ СЛОВО --> ВЫБОР СЛОВАРЯ
         elif (message in idtemp['langs'].keys() or message =='!!!ВСЕ!!!') and idtemp['action'] in ('adwords','dellan','chlang','chwords0'):
-            if idtemp['action'] == 'adwords':#ПОПОЛНИТЬ
-                res,tempOUT,tempKEY = message,'Хорошо, отправляй мне по одному слову за сообщение, вот пример: Похмелье-Hang over. Не отделяй тире пробелами, пожалуйста=)',stopk
-            elif idtemp['action'] == 'dellan':#УДАЛИТЬ
-                idtemp['langs'].pop(message)
-                res,tempOUT,tempKEY = 'mainmenu','Удалила =)',Mkeyboard
-            elif idtemp['action'] == 'chlang':#ИЗМЕНИТЬ
-                res,tempOUT,tempKEY = 'chlang0'+message,'На что меняем?',Mkeyboard
-            elif idtemp['action'] == 'chwords0':#ПРОВЕРКА
-                res,tempOUT,tempKEY,idtemp['chch'] = 'chwords1','Замечательный выбор!',chtkey2,message
-            idtemp['action'] = res
+            if idtemp['action'] == 'dellan':idtemp['langs'].pop(message) 
+            ch1 = {  'adwords':(message,'Хорошо, отправляй мне по одному слову за сообщение, вот пример: Похмелье-Hang over. Не отделяй тире пробелами, пожалуйста=)',stopk,'NONE'),
+                    'dellan':('mainmenu','Удалила =)',Mkeyboard,'NONE'),
+                    'chlang': ('chlang0'+message,'На что меняем?',Mkeyboard,'NONE'),
+                    'chwords0':('chwords1','Замечательный выбор!',chtkey2,message)}
+            res,tempOUT,tempKEY,idtemp['chch'] = ch1[idtemp['action']]
+            idtemp['action'] = res    
         #ПОПОЛНИТЬ СЛОВАРЬ| ПРОВЕРЬ МЕНЯ --> ВЫХОД В ГЛАВНОЕ МЕНЮ
         elif message in (icmind,'Стоп!') and idtemp['action'] in ('adwords','chwords','chwords0','chwords1','PLAYN','edwords0','dellan','chlang'):
-            if idtemp['action'] in ('adwords','chwords','edwords0'):#ВЫХОД В ГЛАВНОЕ МЕНЮ
-                res,tempOUT,tempKEY = 'mainmenu','Окей, я готова двигаться дальше!=)',Mkeyboard
-            elif idtemp['action'] in ('dellan','chlang'):#ВЫХОД В МЕНЮ РЕДАКТИРОВАНИЯ
-                res,tempOUT,tempKEY = 'edwords0','Ок, вернулись=)',editk
-            elif idtemp['action'] == 'chwords0':#ПРОВЕРЬ МЕНЯ --> ВЫХОД В МЕНЮ ВЫБОРА ТИПА ПРОВЕРКИ
-                res,tempOUT,tempKEY = 'chwords','Ладно, шаг назад.',chtkey
-            elif idtemp['action'] == 'chwords1':#ПРОВЕРЬ МЕНЯ --> ВЫХОД В МЕНЮ ВЫБОРА ЯЗЫКА
-                res,tempOUT,tempKEY = 'chwords0','Серьезно?=(',buildkey(0,idtemp['langs'])
-            elif idtemp['action'] == 'PLAYN':#ПРОВЕРЬ МЕНЯ -->ВЫХОД ИЗ ИГРЫ
-                res,tempOUT,tempKEY = 'chwords1','Ладно.',chtkey2
+            ch = {  'adwords':('mainmenu','Окей, я готова двигаться дальше!=)',Mkeyboard),
+                    'dellan':('edwords0','Ок, вернулись=)',editk),
+                    'chwords0':('chwords','Ладно, шаг назад.',chtkey),
+                    'chwords1':('chwords0','Серьезно?=(',buildkey(0,idtemp['langs'])),
+                    'PLAYN':('chwords1','Ладно.',chtkey2)}
+            ch['chwords']=ch['edwords0']=ch['adwords']
+            ch['chlang']=ch['dellan']
+            res,tempOUT,tempKEY = ch[idtemp['action']]
             idtemp['action'] = res
+            
         elif message == edwords:#РЕДАКТИРОВАТЬ
             idtemp['action'] = 'edwords0'
-            tempOUT,tempKEY = 'Что меняем, %s?'%idtemp['uname'],editk
+            tempOUT = 'Что меняем, %s?'%idtemp['uname']
+            tempKEY = editk
         elif message == chname and idtemp['action'] == 'edwords0':#РЕДАКТИРОВАТЬ --> ПОМЕНЯЙ ИМЯ
             idtemp['action'] = 'introO'
-            tempOUT,tempKEY = 'Как теперь мне тебя называть?=)',Mkeyboard
+            tempOUT = 'Как теперь мне тебя называть?=)'
+            tempKEY = Mkeyboard
         elif message == addlan and idtemp['action'] == 'edwords0':#РЕДАКТИРОВАТЬ --> ДОБАВИТЬ ЯЗЫК
             idtemp['action'] = 'introI'
             tempOUT = ('Давай добавим, %s! '%idtemp['uname'] +
@@ -224,13 +228,18 @@ def formanswer(uid,message): #ФУНКЦИЯ ФОРМИРОВАНИЯ ОТВЕТ
             tempKEY = buildkey(1,idtemp['langs'])
         elif message == delwor and idtemp['action'] == 'edwords0':#РЕДАКТИРОВАТЬ --> УДАЛИТЬ СЛОВО
             idtemp['action'] = 'delwor'
-            tempOUT,tempKEY = 'Хорошо, %s, что мне удалить? Напиши по примеру: Похмелье-Hang over'%idtemp['uname'] , Mkeyboard
+            tempOUT = 'Хорошо, %s, что мне удалить? Напиши по примеру: Похмелье-Hang over'%idtemp['uname']
+            tempKEY = Mkeyboard
+        
         elif message == chwords:#ПРОВЕРЬ МЕНЯ
             idtemp['action'] = 'chwords'
-            tempOUT,tempKEY = 'Ок, %s. Как реализуем проверку? Есть два варианта:\n1) Я пишу тебе слово, а ты мне перевод.(любовь-love)\n2) Я пишу перевод, а ты мне слово.(love-любовь).'%idtemp['uname'] , chtkey
+            tempOUT = 'Ок, %s. Как реализуем проверку? Есть два варианта:\n1) Я пишу тебе слово, а ты мне перевод.(любовь-love)\n2) Я пишу перевод, а ты мне слово.(love-любовь).'%idtemp['uname']
+            tempKEY = chtkey
         elif message in (love,evol) and idtemp['action'] == 'chwords':#ПРОВЕРЬ МЕНЯ --> ВЫБОР ЯЗЫКА
             idtemp['chkt'] = 0 if message==love else 1
-            tempOUT,tempKEY,idtemp['action'] = 'Какой язык?',buildkey(0,idtemp['langs']),'chwords0'
+            idtemp['action'] = 'chwords0'
+            tempOUT = 'Какой язык?'
+            tempKEY = buildkey(0,idtemp['langs'])
         #ПРОВЕРЬ МЕНЯ --> ВЫБОР КОЛ-ВА слов
         elif (message in ('Все слова','Последние n') or message.isdigit()) and idtemp['action'] == 'chwords1':
             if message == 'Все слова': idtemp = formdict(uid,idtemp)
@@ -240,44 +249,17 @@ def formanswer(uid,message): #ФУНКЦИЯ ФОРМИРОВАНИЯ ОТВЕТ
                 tempKEY = stopk
             elif message.isdigit(): idtemp = formdict(uid,idtemp,int(message))
         elif message == reminme:#ОБНОВЛЕНИЕ 1. НАПОМНИТЬ МНЕ
-            tempOUT,idtemp['action'] = 'О чем тебе напомнить, %s?'%idtemp['uname'],'remme0'
+            idtemp['action'] = 'remme0'
+            tempOUT = 'О чем тебе напомнить, %s?'%idtemp['uname']
 
         elif message == 'show1': #ПЕРЕПИСАТЬ!!!ВЫВОД ВСЕХ ДАННЫХ В СООБЩЕНИИ
-            for language in idtemp['langs']:
-                for words in enumerate(idtemp['langs'][language]):
-                    idtemp['langs'][language][words[0]] = [words[1][0].lower(),words[1][1].lower()]
             print(idtemp)
-            try:
-                print('\nUser id:\t%s'%idtemp['uid'])
-                print('User name:\t%s'%idtemp['uname'])
-                print('Current action:\t%s'%idtemp['action'])
-                print('Check type:\t%s'%idtemp['chkt'])
-                print('CheckN lan:\t%s'%idtemp['chch'])
-                out=''
-                for lang in idtemp['langs'].keys():
-                    out+='\n'
-                    out += '%s:\n'%lang
-                    for word in idtemp['langs'][lang]:
-                        out += '%s-%s\n'%(word[0],word[1])
-                print('Dictionary:\n%s'%out)
-                out = ''
-                if idtemp:
-                    for word in idtemp['dict']:
-                        out+='%s\t%s\n'%(word[0],word[1])
-                print('CheckN dict:\n%s'%out)
-                t = pload('writefirst')
-                print('\n\nDB "SHE WRITES FIRST":')
-                for key in t.keys():
-                    print('%s:\t%d.%d %d:%d'%(key,t[key][1],t[key][0],t[key][2],t[key][3]))
-                print()
-            except: print('Oops...')
         elif message == 'restart1': #ПЕРЕЗАГРУЗКА
             idtemp['action'] = 'mainmenu'
-            for text in ('Чинюсь...','Исправление пространства времени...','Найдена доступная ячейка, подгружаюсь...',
-            'ASDmiqwjfndasiuNASUYHDLWdoasmdofmaoedwSSSASDWЙЦвыфываЯЛДФЫ'):
+            for text in ('Чинюсь...','Исправление пространства времени...','Найдена доступная ячейка, подгружаюсь...','ASDmiqwjfndasiuNASUYHDLWdoasmdofmaoedwSSSASDWЙЦвыфываЯЛДФЫ'):
                 newmes(uid,text)
-            tempOUT,tempKEY = '!!!OK!!!',Mkeyboard
-
+            tempOUT = '!!!OK!!!'
+            tempKEY = Mkeyboard
         else:
             #ЗНАКОМСТВО|РЕДАКТИРОВАТЬ --> ПРОСИМ ВВЕСТИ ПОЛЬЗОВАТЕЛЯ ИЗУЧАЕМЫЕ ЯЗЫКИ|СОХРАНЯЕМ ИМЯ
             if idtemp['action'] in ('intro0','introO'):
@@ -292,25 +274,31 @@ def formanswer(uid,message): #ФУНКЦИЯ ФОРМИРОВАНИЯ ОТВЕТ
             #ЗНАКОМСТВО|РЕДАКТИРОВАТЬ --> СОХРАНЯЕМ ЯЗЫКИ КОТОРЫЕ ИЗУЧАЕТ ПОЛЬЗОВАТЕЛЬ
             elif idtemp['action'] in ('intro1','introI'):
                 for lang in message.split(' '):idtemp['langs'][lang] = []
+                idtemp['action'] = 'mainmenu'
                 tempOUT = 'Замечательный выбор, а теперь смотри что я умею!' if idtemp['action']=='intro1' else 'Добавила =)'
-                tempKEY,idtemp['action'] = Mkeyboard,'mainmenu'
+                tempKEY = Mkeyboard
             elif idtemp['action'] in idtemp['langs'].keys(): #ПОПОЛНЕНИЕ СЛОВ
                 if message == 'Стоп!':#ПОПОЛНЕНИЕ СЛОВ --> ПОЛЬЗОВАТЕЛЬ ЗАКОНЧИЛ ПОПОЛНЯТЬ СЛОВА
                     idtemp['action'] = 'adwords'
-                    tempOUT,tempKEY = 'Добавим для другого языка, или всё?',buildkey(1,idtemp['langs'])
+                    tempOUT = 'Добавим для другого языка, или всё?'
+                    tempKEY = buildkey(1,idtemp['langs'])
                 else:#ПОПОЛНЕНИЕ СЛОВ --> ДОБАВЛЯЕМ СЛОВА В СПИСОК
                     idtemp['langs'][idtemp['action']].append([message.split('-')[0].lower(), message.split('-')[1].lower()])
-                    tempOUT,tempKEY = 'Ага, записала...',stopk
+                    tempOUT = 'Ага, записала...'
+                    tempKEY = stopk
             elif idtemp['action'][:7] == 'chlang0':#РЕДАКТИРОВАТЬ --> ИСПРАВЛЯЕМ НАЗВАНИЕ ЯЗЫКА
                 idtemp['langs'][message] = idtemp['langs'].pop(idtemp['action'][7:])
-                tempOUT,tempKEY,idtemp['action'] = 'Готово!=)',Mkeyboard,'mainmenu'
+                idtemp['action'] = 'mainmenu'
+                tempOUT = 'Готово!=)'
+                tempKEY = Mkeyboard
             elif idtemp['action'] == 'delwor':#РЕДАКТИРОВАТЬ --> УДАЛИТЬ СЛОВО
                 for language in idtemp['langs']:
                     try:
                         idtemp['langs'][language].remove(message.lower().split('-'))
                         tempOUT = 'Удалила!=)';break
                     except:tempOUT = 'Упс=( Не могу найти слова. Напиши точно так же как в твоем словаре, пожалуйста!'
-                tempKEY,idtemp['action']=Mkeyboard,'mainmenu'
+                idtemp['action'] = 'mainmenu'
+                tempKEY = Mkeyboard
             #ПРОВЕРЬ МЕНЯ --> ПОЛЬЗОВАТЕЛЬ ВВОДИТ СЛОВО
             elif idtemp['action'] == 'PLAYN':
                 #ПРАВИЛЬНО ОТВЕТИЛ
@@ -325,21 +313,18 @@ def formanswer(uid,message): #ФУНКЦИЯ ФОРМИРОВАНИЯ ОТВЕТ
                     else:#ПОСЛЕДНЕЕ СЛОВО
                         idtemp['action']='mainmenu'
                         cur = ((idtemp['stlen']-idtemp['%'])/idtemp['stlen'])*100
-                        tempOUT,tempKEY = 'Поздравляю %s, мы закончили!=)\nТвой результат: %.2f'%(idtemp['uname'],cur),Mkeyboard
+                        tempOUT = 'Поздравляю %s, мы закончили!=)\nТвой результат: %.2f'%(idtemp['uname'],cur)
+                        tempKEY = Mkeyboard
                 else:#НЕПРАВИЛЬНО ОТВЕТИЛ
                     idtemp['%'] +=1
                     cur = ((idtemp['stlen']-idtemp['%'])/idtemp['stlen'])*100
-                    tempOUT,tempKEY = 'Ошибка! Точность: %.2f'%cur,stopk
+                    tempOUT = 'Ошибка! Точность: %.2f'%cur
+                    tempKEY = stopk
                     tempOUT += '\nПостарайся ещё, слово: %s (%s)'%(idtemp['dict'][0][idtemp['chkt']],idtemp['dict'][0][2])
             elif idtemp['action'] == 'remme0':#ОБНОВЛЕНИЕ. НАПОМНИ МНЕ
-                idtemp['action'],idtemp['remi'] = 'remme1',message
-                tempOUT = """Отлично, теперь укажи дату в формате: %d.%d.%d.%d  где:
-                %d - Месяц
-                %d - Число
-                %d - Час
-                %d - Минута
-                Не используй нули и пробелы а то я запутаюсь =("""%(now.month,now.day,now.hour,now.minute,
-                now.month,now.day,now.hour,now.minute)
+                idtemp['action'] = 'remme1'
+                idtemp['remi'] = message
+                tempOUT = "Отлично, теперь укажи дату в формате: %d.%d.%d.%d  где:\n%d - Месяц\n%d - Число\n%d - Час\n%d - Минута\nНе используй нули и пробелы а то я запутаюсь =("%(now.month,now.day,now.hour,now.minute,now.month,now.day,now.hour,now.minute)
             elif idtemp['action'] == 'remme1':#НАПОМИНАНИЕ --> ЗАПОМНИТЬ
                 idtemp['action'] = 'mainmenu'
                 dt = message.split('.')
@@ -359,18 +344,19 @@ def formanswer(uid,message): #ФУНКЦИЯ ФОРМИРОВАНИЯ ОТВЕТ
         wtfst[uid] = [now.month,now.day, now.hour,now.minute]
         pdump('writefirst',wtfst)
         pdump(uid,idtemp)
+    except SystemExit: sys.exit(0)
     except: newmes(uid,'Oops...(Try restart1)')
 
 def buildkey(type0,langs=None): #ФУНКЦИЯ ПОСТРОЕНИЯ КЛАВИАТУРЫ
     keyboard = VkKeyboard(one_time=False)
-    keyboard.add_button('Стоп!',color=VkKeyboardColor.NEGATIVE)
-    keyboard.add_line()
     for x in enumerate(langs.keys()):
         if x[0]%2==0 and x[0]>1: keyboard.add_line()
         keyboard.add_button(x[1],color=VkKeyboardColor.POSITIVE)
-    if type0:return keyboard
+    if not type0:
+        keyboard.add_line()
+        keyboard.add_button('!!!ВСЕ!!!',color=VkKeyboardColor.POSITIVE)
     keyboard.add_line()
-    keyboard.add_button('!!!ВСЕ!!!',color=VkKeyboardColor.POSITIVE)
+    keyboard.add_button('Стоп!',color=VkKeyboardColor.NEGATIVE)
     return keyboard
 
 def newmes(uid,message,*keyboard): #ФУНКЦИЯ ОТПРАВКИ СООБЩЕНИЙ
@@ -378,21 +364,20 @@ def newmes(uid,message,*keyboard): #ФУНКЦИЯ ОТПРАВКИ СООБЩЕ
         vk.method('messages.send',{'user_id' :uid,'random_id': get_random_id(),
                                 'message':message,'keyboard':keyboard[0].get_keyboard()})
     else:vk.method('messages.send',{'user_id' :uid,'random_id': get_random_id(),'message':message})
-    print("SystemID:\tFIBI\nSystem message:\n" + str(message))
 
 def pdump(uid,idtem): #ФУНКЦИЯ СОХРАНЕНИЯ ДАННЫХ ПОЛЬЗОВАТЕЛЯ НА ДИСК
     with open(path + str(uid)+'.pkl','wb') as f: pickle.dump(idtem,f)
-    print('DATA SAVED')
 def pload(uid): #ФУНКЦИЯ ЗАГРУЗКИ ДАННЫХ ПОЛЬЗОВАТЕЛЯ С ДИСКА 
     with open(path + str(uid)+'.pkl','rb') as f: return pickle.load(f)
-    print('DATA LOADED')
 
 print('Second thread creating...')
 wt=WriteFirst()
-print('SYSTEM STARTED')
+print('System ready')
+newmes(214708790,'System ready!')
 while True:#ПОЛУЧАЕМ НОВЫЕ СООБЩЕНИЯ В ЦИКЛЕ
     try:
         for event in longpoll.listen():
             if event.to_me:
                 if event.type == VkEventType.MESSAGE_NEW: formanswer(event.user_id,event.text)
+    except SystemExit: break
     except: print('SYSTEM FUCKED UP')
