@@ -1,363 +1,404 @@
 #!/usr/bin/env python3
-import os
-import sys
-import os.path
-import pickle
-import vk_api
-import random
-import datetime
-import time
-import threading
-from subprocess import Popen
-from vk_api.longpoll import VkLongPoll,VkEventType
-from vk_api.keyboard import VkKeyboard, VkKeyboardColor
-from vk_api.utils import get_random_id
 
-#ЗАГРУЖАЕМ ТОКЕН
-path = os.getcwd() +'/'
-print(path)
-token = open(path +'token').readline().rstrip()
-print('\nToken:\t',token)
-print('Variables creating...')
-#СОЗДАЕМ ПЕРЕМЕННУЮ С ВРЕМЕННЫМИ ДАННЫМИ ПОЛЬЗОВАТЕЛЯ
-idtemp = {'action':'intro','langs':{}}
-wtfst = {}
-#РЕДАКТИРОВАТЬ --> текст клавиатуры
-chname, addlan, dellan = 'Я поменяль имя','Добавить язык','Удалить язык'
-chlang, ediwor, delwor  = 'Очепятка в языке','Изменить слово','Удалить слово'
-icmind = 'Я передумаль, Фиби=('
-love,evol = 'Любовь-Love','Love-Любовь'
-tss = 0
-print('Keyboards creating...')
-#СОЗДАЕМ КЛАВИАТУРУ СТОП
-stopk = VkKeyboard(one_time=False)
-stopk.add_button('Стоп!',color=VkKeyboardColor.NEGATIVE)
-#СОЗДАЕМ КЛАВИАТУРУ ГЛАВНОГО МЕНЮ
-adwords,shwords,chwords,edwords = 'Пополнить словарь','Мой словарь','Проверь слова, Фиби!=)','Редактировать'
-reminme = 'Напомни мне'
-Mkeyboard = VkKeyboard(one_time=False)
-Mkeyboard.add_button(adwords,color=VkKeyboardColor.POSITIVE)
-Mkeyboard.add_button(shwords,color=VkKeyboardColor.POSITIVE)
-Mkeyboard.add_line()
-Mkeyboard.add_button(chwords,color=VkKeyboardColor.POSITIVE)
-Mkeyboard.add_line()
-Mkeyboard.add_button(reminme,color=VkKeyboardColor.POSITIVE)
-Mkeyboard.add_line()
-Mkeyboard.add_button(edwords,color=VkKeyboardColor.NEGATIVE)
-#СОЗДАЕМ КЛАВИАТУРУ МЕНЮ РЕДАКТИРОВАНИЯ
-editk = VkKeyboard(one_time=False)
-editk.add_button(chname,color=VkKeyboardColor.POSITIVE)
-editk.add_line()
-editk.add_button(addlan,color=VkKeyboardColor.POSITIVE)
-editk.add_button(dellan,color=VkKeyboardColor.NEGATIVE)
-editk.add_line()
-editk.add_button(chlang,color=VkKeyboardColor.POSITIVE)
-editk.add_line()
-editk.add_button(adwords,color=VkKeyboardColor.POSITIVE)
-editk.add_button(delwor,color=VkKeyboardColor.NEGATIVE)
-editk.add_line()
-editk.add_button(icmind,color=VkKeyboardColor.NEGATIVE)
-#СОЗДАЕМ КЛАВИАТУРУ ВЫБОРА ТИПА ПРОВЕРКИ
-chtkey = VkKeyboard(one_time=False)
-chtkey.add_button(love,color=VkKeyboardColor.POSITIVE)
-chtkey.add_line()
-chtkey.add_button(evol,color=VkKeyboardColor.POSITIVE)
-chtkey.add_line()
-chtkey.add_button('Стоп!',color=VkKeyboardColor.NEGATIVE)
-#СОЗДАЕМ КЛАВИАТУРУ ВЫБОРА СЛОВ ДЛЯ ПРОВЕРКИ
-chtkey2 = VkKeyboard(one_time=False)
-chtkey2.add_button('Все слова',color=VkKeyboardColor.POSITIVE)
-chtkey2.add_line()
-chtkey2.add_button('Последние n',color=VkKeyboardColor.POSITIVE)
-chtkey2.add_line()
-chtkey2.add_button('Стоп!',color=VkKeyboardColor.NEGATIVE)
+#VKAPI      (сохр данных)(для ответов)(напоминания)
+import vk_api,os, pickle, random, datetime,time,threading,sys
+from vk_api.longpoll import VkLongPoll,VkEventType
+from vk_api.utils import get_random_id
+import fibiGM as gm                                             #Моудль создания словаря для игры
+import keysFi as k                                              #Модуль с клавиатурами
+#Импортированно отдельными модулями чтобы не захломлять код
+
+#Данный словарь позволяет создать навигацию в меню с помощью кнопки вернуться назад
+ksNacts = { ('addwo',0):['Мы в главном меню =)',k.MKey],
+            ('addwo',10):['Мы в меню редактирования =)',k.EKey],
+            ('addwo',1):['Окей, добавим для другого языка или в главное меню?',1],
+            ('addwo',11):['Окей, добавим для другого языка или вернемся в меню редактирования?',1],
+            ('edydi',11):['Вернулись назад',1],
+            ('playn',1):['Окей, выбирай снова, как мы тебя будем проверять?',k.CTKey],
+            ('playn',2):['Ну ладно, выбирай снова какой язык',0],
+            ('playn',3):['Ок. Выбери тип проверки',k.CT2Key],
+            ('remmi',1):['Ок, давай по новой. О чем напомнить?',k.SKey],
+            ('remmi',2):['Ок,на что меняем дату?',k.REKey]}
+
+ksNacts[('edywo',0)]=ksNacts[('playn',0)]=ksNacts[('remmi',0)]= ksNacts[('addwo',0)]
+ksNacts[('intro',10)]=ksNacts[('edydi',10)]=ksNacts[('edydi',15)]=ksNacts[('edydi',16)]=ksNacts[('edydi',17)] = ksNacts[('addwo',10)]
+ksNacts[('playn',4)] = ksNacts[('playn',3)]
+#Этот словарь упрощает формирование ответов и клавиатур из меню редактирования
+edMenu = {  11: (['edywo',0],'Заменила =)', k.EKey),
+            15: (['edywo',0],'Добавила!', k.EKey),
+            16: (['edywo',0],'Удалила!=(',k.EKey),
+            17: [['edydi',17],'Упс=( Не могу найти слова. Напиши точно так же как в твоем словаре, пожалуйста!',k.SKey]}
+
+PATH1 = os.getcwd() +'/'
+ptw = PATH1 + 'writefirst.pkl'      #Здесь хранятся записи о том когда пользователь писал в последний раз
+ptr = PATH1 + 'reminder.pkl'        #Тут хранятся напоминания
+
+fibcount = 0                        #Переменная для отсчета минут, использована в функции WriteFirst
+
+token = open(PATH1 +'token').readline().rstrip()    #Здесь хранится токен
+print('\nToken:\t',token) 
+
 print('Connecting...')
 #ПОДКЛЮЧАЕМСЯ К VK
 vk = vk_api.VkApi(token=token)
 longpoll = VkLongPoll(vk)
-print('Function initialization...')
 
-class WriteFirst:#СОЗДАЕМ ОТДЕЛЬНЫЙ ПОТОК ДЛЯ ФУНКЦИИ "ПИШУ ПЕРВОЙ" И "НАПОМНИ МНЕ"
-    def __init__(self,interval = 60):
-        self.interval = interval
-        thread = threading.Thread(target=self.chkTi,args=())
-        thread.daemon = True
-        thread.start()
 
-    def chkTi(self):
-        global tss
-        while True:
-            nowt = datetime.datetime.now()
-            dtm = [nowt.month,nowt.day,nowt.hour,nowt.minute]
-            print(nowt.strftime('%d-%m-%Y\t%H:%M'))
-            #WRITEFIRST
-            try:
-                tss += 1
-                wtf = pload('writefirst')
-                if tss == 90:
-                    newmes(214708790,'All good!')
-                    tss = 0
-                for uid in wtf.keys():
-                    if (dtm[0]>wtf[uid][0] or dtm[1]>wtf[uid][1]) and (dtm[2] >= wtf[uid][2] and dtm[3] > wtf[uid][3]):
-                            wtf[uid]=dtm
-                            pdump('writefirst',wtf)
-                            tempu = pload(uid)
-                            ch = {'%':0,'chkt':1,'chch':'!!!ВСЕ!!!','action':'chwords1'}
-                            for key in ch.keys():
-                                tempu[key] = ch[key]
-                            pdump(uid,tempu)
-                            x = tempu['langs'][min(tempu['langs'])]
-                            out = 'Мы не общались больше суток, %s! Я тебе больше не нужна?=(\nСыграем? Загадай число от 1 до %d'%(tempu['uname'],len(x))
-                            newmes(uid,out,stopk)
-            except:
-                print('NO DB YET')
-            #НАПОМИНАНИЯ
-            try:
-                if os.path.isfile(path + 'reminder.pkl'):
-                    tmpr = pload('reminder')
-                    for mess in tmpr.keys():
-                        if dtm[0]==tmpr[mess][1] and dtm[1]==tmpr[mess][2] and dtm[2]>=tmpr[mess][3] and dtm[3]>=tmpr[mess][4]:
-                            for text in ('Эй',mess,'Нужно было напомнить.'):newmes(tmpr[mess][0],text)
-                            tmpr.pop(mess,'FUCK')
-                            pdump('reminder',tmpr)
-                            break
-                else: 
-                    print('NO REMINDERS YET')
-            except:
-                print('NO REMINDERS DB')
-            time.sleep(self.interval)
+def introF(message,bhv,userd): # Разобрано в ReadMe
+    print('INTRO function is working')
+    if bhv == 0:
+        userd['act'][1] = 1
 
-def formdict(uid,idtemp, i=0,out =''): #ПОСТРОЕНИЕ МАССИВА СЛОВ ДЛЯ ОПРОСА
+        tempOUT = open(PATH1 + 'someos','r').readlines()[0][:-1]
+        tempKEY = 0
+    elif bhv in (1,10):
+        if bhv == 1: userd['act'][1] = 2
+        else:userd['act'] = ['edywo',0]
+        userd['name'] = message
+        f = open(PATH1 + 'someos','r').readlines()
+        tempOUT = (f[1][:-1] + userd['name'] + f[2][:-1]) if bhv == 1 else 'Ок, %s'%userd['name']
+        tempKEY=0 if bhv == 1 else k.EKey
+    elif bhv == 2:
+        userd['act'] = ['mainm',0]
+        
+        for lang in message.split():
+            userd['dict'][lang] = []
+
+        tempOUT = open(PATH1 + 'someos','r').readlines()[3][:-1]
+        tempKEY = k.MKey
+
+    return userd,tempOUT,tempKEY
+
+def mainmF(message,bhv,userd):# Разобрано в ReadMe
     try:
-        idtemp['dict'] = []
-        for language in idtemp['langs']:
-            if idtemp['chch'] != '!!!ВСЕ!!!': language = idtemp['chch']
-            for elem in enumerate(idtemp['langs'][language][::-1]):
-                if i and i==elem[0]: break
-                elem2 = elem[1][:]
-                elem2.append(language)
-                idtemp['dict'].append(elem2)
-            if idtemp['chch'] != '!!!ВСЕ!!!':break
-        #ПОДГОТОВКА К ИГРЕ И ФОРМИРОВАНИЕ ОТВЕТА
-        if not i: out = 'Любишь сложнее, да, %s?\n'%idtemp['uname']
-        random.shuffle(idtemp['dict'])
-        idtemp['stlen'],idtemp['action'] = len(idtemp['dict']),'PLAYN'
-        out += 'Я буду писать тебе слово, ты будешь писать ответ, мы подсчитаем процент правильных ответов вместе! Ты сможешь!)'
-        out +='\nВсего слов: %s'%idtemp['stlen']
-        newmes(uid,out)
-        newmes(uid, 'Я начинаю: %s(%s)'%(idtemp['dict'][0][idtemp['chkt']],idtemp['dict'][0][2]) ,stopk)
-    except:
-        newmes(uid,'Oops... Broken x(')#,Mkeyboard)
-        return idtemp
-
-def formanswer(uid,message): #ФУНКЦИЯ ФОРМИРОВАНИЯ ОТВЕТОВ
-    try:
-        global idtemp,wtfst
-        tempOUT = ''
-        tempKEY = None
-        now = datetime.datetime.now()
-        ptu = path + str(uid) +'.pkl'
-        print(now.strftime('%d-%m-%Y\t%H:%M'),"Chpon'k",sep='\t')
-        #ПЫТАЕМСЯ ЗАГРУЗИТЬ ДАННЫЕ ПОЛЬЗОВАТЕЛЯ С ЛОКАЛЬНОГО ХРАНИЛИЩА
-        if os.path.isfile(ptu):idtemp = pload(uid)
-        else: idtemp = {'action':'intro','langs':{}}
-        
-        if idtemp['action'] == 'mainmenu':#ОБНУЛЕНИЕ ИГРОВЫХ ПЕРЕМЕННЫХ
-            ch0 = {'chkt':2,'%':0,'stlen':0,'chch':'NONE','remi':'','dict':[]}
-            for key in ch0.keys(): idtemp[key] = ch0[key]
-        
-        if message.lower() in ['start','начать','привет']:#ЗНАКОМСТВО
-            idtemp['uid'] = uid
-            idtemp['action'] = 'intro0'
-            tempOUT = ('Привет, меня зовут Фиби и я буду твоим персональным помощником в изучении языка. ' +
-                    'Мы с тобой будем учить слова и с этого дня я от тебя не отцеплюсь! =)' +
-                    'Я представилась, а как обращаться к тебе?)')
-        
-        elif message == shwords:#ПОКАЖИ МОЙ СЛОВАРЬ
-            tempOUT = 'Хорошо, вот твой словарь, %s:\n'%idtemp['uname']
-            count = 0
-            for lang in idtemp['langs'].keys():
-                count += len(idtemp['langs'][lang])
-                tempOUT += '\n%s (слов - %d):\n'%(lang,len(idtemp['langs'][lang]))
-                for word in idtemp['langs'][lang]:
-                    tempOUT += '%s-%s\n'%(word[0],word[1])
+        userd = zeros(userd)
+        if message == k.shwL:#User asks to show his dict
+            tempOUT = random.choice(open(PATH1 + 'takedict','r').readlines())
+            tempOUT = tempOUT[:-1]
+            tempOUT += '%s:\n'%userd['name']
+            count = 0 
+            for lang in userd['dict'].keys():
+                    count += len(userd['dict'][lang])
+                    tempOUT += '\n%s (слов - %d):\n'%(lang,len(userd['dict'][lang]))
+                    for word in userd['dict'][lang]:
+                        if len(tempOUT) >= 3800:
+                            newmes(userd['id'],tempOUT)
+                            tempOUT = ''
+                        tempOUT += '%s-%s\n'%(word[0],word[1])
             tempOUT += '\nВсего слов - %d'%count
+            tempKEY = k.MKey
+        elif message == k.addW:#User asks to add words in dict
+            userd['act'] = ['addwo',0]
 
-        elif message == adwords:#ПОПОЛНИТЬ СЛОВАРЬ
-            idtemp['action'] = 'adwords'
-            tempOUT = 'Окей, но всё по порядку, %s =) Какой язык?'%idtemp['uname']
-            tempKEY = buildkey(1,idtemp['langs'])
-        #ПОПОЛНИТЬ СЛОВАРЬ|УДАЛИТЬ СЛОВАРЬ|ИЗМЕНИТЬ СЛОВАРЬ|ИЗМЕНИТЬ СЛОВО --> ВЫБОР СЛОВАРЯ
-        elif (message in idtemp['langs'].keys() or message =='!!!ВСЕ!!!') and idtemp['action'] in ('adwords','dellan','chlang','chwords0'):
-            if idtemp['action'] == 'dellan':idtemp['langs'].pop(message) 
-            ch1 = {  'adwords':(message,'Хорошо, отправляй мне по одному слову за сообщение, вот пример: Похмелье-Hang over. Не отделяй тире пробелами, пожалуйста=)',stopk,'NONE'),
-                    'dellan':('mainmenu','Удалила =)',Mkeyboard,'NONE'),
-                    'chlang': ('chlang0'+message,'На что меняем?',Mkeyboard,'NONE'),
-                    'chwords0':('chwords1','Замечательный выбор!',chtkey2,message)}
-            res,tempOUT,tempKEY,idtemp['chch'] = ch1[idtemp['action']]
-            idtemp['action'] = res    
-        #ПОПОЛНИТЬ СЛОВАРЬ| ПРОВЕРЬ МЕНЯ --> ВЫХОД В ГЛАВНОЕ МЕНЮ
-        elif message in (icmind,'Стоп!') and idtemp['action'] in ('adwords','chwords','chwords0','chwords1','PLAYN','edwords0','dellan','chlang'):
-            ch = {  'adwords':('mainmenu','Окей, я готова двигаться дальше!=)',Mkeyboard),
-                    'dellan':('edwords0','Ок, вернулись=)',editk),
-                    'chwords0':('chwords','Ладно, шаг назад.',chtkey),
-                    'chwords1':('chwords0','Серьезно?=(',buildkey(0,idtemp['langs'])),
-                    'PLAYN':('chwords1','Ладно.',chtkey2)}
-            ch['chwords']=ch['edwords0']=ch['adwords']
-            ch['chlang']=ch['dellan']
-            res,tempOUT,tempKEY = ch[idtemp['action']]
-            idtemp['action'] = res
-            
-        elif message == edwords:#РЕДАКТИРОВАТЬ
-            idtemp['action'] = 'edwords0'
-            tempOUT = 'Что меняем, %s?'%idtemp['uname']
-            tempKEY = editk
-        elif message == chname and idtemp['action'] == 'edwords0':#РЕДАКТИРОВАТЬ --> ПОМЕНЯЙ ИМЯ
-            idtemp['action'] = 'introO'
-            tempOUT = 'Как теперь мне тебя называть?=)'
-            tempKEY = Mkeyboard
-        elif message == addlan and idtemp['action'] == 'edwords0':#РЕДАКТИРОВАТЬ --> ДОБАВИТЬ ЯЗЫК
-            idtemp['action'] = 'introI'
-            tempOUT = ('Давай добавим, %s! '%idtemp['uname'] +
-                    'Напиши пожалуйста каждый язык через пробел, например: Английский Испанский Японский')
-            tempKEY = Mkeyboard
-        #РЕДАКТИРОВАТЬ --> УДАЛИТЬ ЯЗЫК|ОПЕЧАТКА В НАЗВАНИИ ЯЗЫКА
-        elif message in (dellan,chlang) and idtemp['action'] == 'edwords0':
-            idtemp['action'] = 'dellan' if message == dellan else 'chlang'
-            tempOUT = 'Какой язык удаляем?' if message == dellan else 'Какой язык изменяем, %s?'%idtemp['uname']
-            tempKEY = buildkey(1,idtemp['langs'])
-        elif message == delwor and idtemp['action'] == 'edwords0':#РЕДАКТИРОВАТЬ --> УДАЛИТЬ СЛОВО
-            idtemp['action'] = 'delwor'
-            tempOUT = 'Хорошо, %s, что мне удалить? Напиши по примеру: Похмелье-Hang over'%idtemp['uname']
-            tempKEY = Mkeyboard
-        
-        elif message == chwords:#ПРОВЕРЬ МЕНЯ
-            idtemp['action'] = 'chwords'
-            tempOUT = 'Ок, %s. Как реализуем проверку? Есть два варианта:\n1) Я пишу тебе слово, а ты мне перевод.(любовь-love)\n2) Я пишу перевод, а ты мне слово.(love-любовь).'%idtemp['uname']
-            tempKEY = chtkey
-        elif message in (love,evol) and idtemp['action'] == 'chwords':#ПРОВЕРЬ МЕНЯ --> ВЫБОР ЯЗЫКА
-            idtemp['chkt'] = 0 if message==love else 1
-            idtemp['action'] = 'chwords0'
-            tempOUT = 'Какой язык?'
-            tempKEY = buildkey(0,idtemp['langs'])
-        #ПРОВЕРЬ МЕНЯ --> ВЫБОР КОЛ-ВА слов
-        elif (message in ('Все слова','Последние n') or message.isdigit()) and idtemp['action'] == 'chwords1':
-            if message == 'Все слова': idtemp = formdict(uid,idtemp)
-            elif message == 'Последние n':
-                x = idtemp['langs'][min(idtemp['langs'])] if idtemp['chch'] == '!!!ВСЕ!!!' else idtemp['langs'][idtemp['chch']]
-                tempOUT = 'Отличный выбор, %s!\nСколько слов? ответь цифрой 1 до %d'%(idtemp['uname'],len(x))
-                tempKEY = stopk
-            elif message.isdigit(): idtemp = formdict(uid,idtemp,int(message))
-        elif message == reminme:#ОБНОВЛЕНИЕ 1. НАПОМНИТЬ МНЕ
-            idtemp['action'] = 'remme0'
-            tempOUT = 'О чем тебе напомнить, %s?'%idtemp['uname']
+            tempOUT = 'Окей, но всё по порядку, %s =) Какой язык?'%userd['name']
+            tempKEY = k.buildkey(1, userd['dict'].keys())
+        elif message == k.edyL:#User asks to open editing menu
+            userd['act'] = ['edywo',0]
 
-        elif message == 'show1': #ПЕРЕПИСАТЬ!!!ВЫВОД ВСЕХ ДАННЫХ В СООБЩЕНИИ
-            print(idtemp)
-        elif message == 'restart1': #ПЕРЕЗАГРУЗКА
-            idtemp['action'] = 'mainmenu'
-            for text in ('Чинюсь...','Исправление пространства времени...','Найдена доступная ячейка, подгружаюсь...','ASDmiqwjfndasiuNASUYHDLWdoasmdofmaoedwSSSASDWЙЦвыфываЯЛДФЫ'):
-                newmes(uid,text)
-            tempOUT = '!!!OK!!!'
-            tempKEY = Mkeyboard
+            tempOUT = random.choice(open(PATH1+'editenter','r').readlines())
+            tempKEY = k.EKey
+        elif message == k.chwL:#User asks to check words
+            userd['act'] = ['playn',0]
+            tempOUT = 'Ок, %s. Как реализуем проверку? Есть два варианта:\n1) Я пишу тебе слово, а ты мне перевод.(любовь-love)\n2) Я пишу перевод, а ты мне слово.(love-любовь).'%userd['name']
+            tempKEY = k.CTKey
+        elif message == k.remL:#User asks to remind something
+            userd['act'] = ['remmi',0]
+            tempOUT = random.choice(open(PATH1 + 'remmi','r').readlines())
+            tempKEY = k.SKey
+        elif message == k.relL:#User asks for reminders list
+            tempOUT = 'Список активных напоминаний, %s:\n'%userd['name']
+            out = ''
+
+            tempKEY = k.MKey
+            remis = pload('reminder')
+            if remis:
+                for element in remis:
+                    if element[-2] == userd['id']:
+                        out += '%s, нужно напомнить %d.%d в %d:%d\n'%(element[-1],element[1],element[0],element[2],element[3])
+            if not out:
+                tempOUT = random.choice(open(PATH1+'noremis','r').readlines())
+            else:
+                tempOUT += out
         else:
-            #ЗНАКОМСТВО|РЕДАКТИРОВАТЬ --> ПРОСИМ ВВЕСТИ ПОЛЬЗОВАТЕЛЯ ИЗУЧАЕМЫЕ ЯЗЫКИ|СОХРАНЯЕМ ИМЯ
-            if idtemp['action'] in ('intro0','introO'):
-                idtemp['uname'] =  message
-                if idtemp['action'] == 'intro0':
-                    idtemp['action'] = 'intro1'
-                    tempOUT = ('Очень приятно, %s, Какие языки мы будем изучать?'%idtemp['uname'] +
-                        'Напиши пожалуйста каждый язык через пробел, например: Английский Испанский Японский')
-                else:
-                    idtemp['action'] = 'mainmenu'
-                    tempOUT = 'Хорошо, %s'%idtemp['uname']
-            #ЗНАКОМСТВО|РЕДАКТИРОВАТЬ --> СОХРАНЯЕМ ЯЗЫКИ КОТОРЫЕ ИЗУЧАЕТ ПОЛЬЗОВАТЕЛЬ
-            elif idtemp['action'] in ('intro1','introI'):
-                for lang in message.split(' '):idtemp['langs'][lang] = []
-                idtemp['action'] = 'mainmenu'
-                tempOUT = 'Замечательный выбор, а теперь смотри что я умею!' if idtemp['action']=='intro1' else 'Добавила =)'
-                tempKEY = Mkeyboard
-            elif idtemp['action'] in idtemp['langs'].keys(): #ПОПОЛНЕНИЕ СЛОВ
-                if message == 'Стоп!':#ПОПОЛНЕНИЕ СЛОВ --> ПОЛЬЗОВАТЕЛЬ ЗАКОНЧИЛ ПОПОЛНЯТЬ СЛОВА
-                    idtemp['action'] = 'adwords'
-                    tempOUT = 'Добавим для другого языка, или всё?'
-                    tempKEY = buildkey(1,idtemp['langs'])
-                else:#ПОПОЛНЕНИЕ СЛОВ --> ДОБАВЛЯЕМ СЛОВА В СПИСОК
-                    idtemp['langs'][idtemp['action']].append([message.split('-')[0].lower(), message.split('-')[1].lower()])
-                    tempOUT = 'Ага, записала...'
-                    tempKEY = stopk
-            elif idtemp['action'][:7] == 'chlang0':#РЕДАКТИРОВАТЬ --> ИСПРАВЛЯЕМ НАЗВАНИЕ ЯЗЫКА
-                idtemp['langs'][message] = idtemp['langs'].pop(idtemp['action'][7:])
-                idtemp['action'] = 'mainmenu'
-                tempOUT = 'Готово!=)'
-                tempKEY = Mkeyboard
-            elif idtemp['action'] == 'delwor':#РЕДАКТИРОВАТЬ --> УДАЛИТЬ СЛОВО
-                for language in idtemp['langs']:
-                    try:
-                        idtemp['langs'][language].remove(message.lower().split('-'))
-                        tempOUT = 'Удалила!=)';break
-                    except:tempOUT = 'Упс=( Не могу найти слова. Напиши точно так же как в твоем словаре, пожалуйста!'
-                idtemp['action'] = 'mainmenu'
-                tempKEY = Mkeyboard
-            #ПРОВЕРЬ МЕНЯ --> ПОЛЬЗОВАТЕЛЬ ВВОДИТ СЛОВО
-            elif idtemp['action'] == 'PLAYN':
-                #ПРАВИЛЬНО ОТВЕТИЛ
-                if message.lower() in idtemp['dict'][0] and message != idtemp['dict'][0][idtemp['chkt']]:
-                    tempOUT = 'Правильно!'
-                    cur = ((idtemp['stlen']-idtemp['%'])/idtemp['stlen'])*100
-                    tempOUT += '\nТочность: %.2f'%cur
-                    if len(idtemp['dict'])>1:#СЛОВА ЕЩЁ ЕСТЬ
-                        idtemp['dict'].remove(idtemp['dict'][0])
-                        tempOUT += '\nНовое слово: %s (%s)'%(idtemp['dict'][0][idtemp['chkt']],idtemp['dict'][0][2])
-                        tempKEY = stopk
-                    else:#ПОСЛЕДНЕЕ СЛОВО
-                        idtemp['action']='mainmenu'
-                        cur = ((idtemp['stlen']-idtemp['%'])/idtemp['stlen'])*100
-                        tempOUT = 'Поздравляю %s, мы закончили!=)\nТвой результат: %.2f'%(idtemp['uname'],cur)
-                        tempKEY = Mkeyboard
-                else:#НЕПРАВИЛЬНО ОТВЕТИЛ
-                    idtemp['%'] +=1
-                    cur = ((idtemp['stlen']-idtemp['%'])/idtemp['stlen'])*100
-                    tempOUT = 'Ошибка! Точность: %.2f'%cur
-                    tempKEY = stopk
-                    tempOUT += '\nПостарайся ещё, слово: %s (%s)'%(idtemp['dict'][0][idtemp['chkt']],idtemp['dict'][0][2])
-            elif idtemp['action'] == 'remme0':#ОБНОВЛЕНИЕ. НАПОМНИ МНЕ
-                idtemp['action'] = 'remme1'
-                idtemp['remi'] = message
-                tempOUT = "Отлично, теперь укажи дату в формате: %d.%d.%d.%d  где:\n%d - Месяц\n%d - Число\n%d - Час\n%d - Минута\nНе используй нули и пробелы а то я запутаюсь =("%(now.month,now.day,now.hour,now.minute,now.month,now.day,now.hour,now.minute)
-            elif idtemp['action'] == 'remme1':#НАПОМИНАНИЕ --> ЗАПОМНИТЬ
-                idtemp['action'] = 'mainmenu'
-                dt = message.split('.')
-                ptr = path + 'reminder.pkl'
-                if os.path.isfile(ptr):tmpr = pload('reminder')
-                else: tmpr = {idtemp['remi']:[uid,dt[0],dt[1],dt[2],dt[3]]}
-                tmpr[idtemp['remi']] = [uid,int(dt[0]),int(dt[1]),int(dt[2]),int(dt[3])]
-                pdump('reminder',tmpr)
-                tempOUT,tempKEY ='Хорошо, %s. Я напомню'%idtemp['uname'], Mkeyboard
-        #WRITING A NEW MESSAGE
-        if tempOUT:
-            if tempKEY: newmes(uid,tempOUT,tempKEY)
-            else: newmes(uid,tempOUT)
-        #WRITEFIRST
-        ptw = path + 'writefirst.pkl'
-        if os.path.isfile(ptw):wtfst = pload('writefirst')
-        wtfst[uid] = [now.month,now.day, now.hour,now.minute]
-        pdump('writefirst',wtfst)
-        pdump(uid,idtemp)
-    except SystemExit: sys.exit(0)
-    except: newmes(uid,'Oops...(Try restart1)')
+            tempOUT = 'Прости, я тебя не понимаю =('
+            tempKEY = k.MKey
+    except:
+        print('Main function panic')
+        tempOUT = 'Panic! (failed to start MF. Exception code: "fuck me. how did you do that?") System restarted'
+        userd = zeros(userd)
+        tempKEY = k.MKey
+    return userd,tempOUT,tempKEY
 
-def buildkey(type0,langs=None): #ФУНКЦИЯ ПОСТРОЕНИЯ КЛАВИАТУРЫ
-    keyboard = VkKeyboard(one_time=False)
-    for x in enumerate(langs.keys()):
-        if x[0]%2==0 and x[0]>1: keyboard.add_line()
-        keyboard.add_button(x[1],color=VkKeyboardColor.POSITIVE)
-    if not type0:
-        keyboard.add_line()
-        keyboard.add_button('!!!ВСЕ!!!',color=VkKeyboardColor.POSITIVE)
-    keyboard.add_line()
-    keyboard.add_button('Стоп!',color=VkKeyboardColor.NEGATIVE)
-    return keyboard
+def addwoF(message,bhv,userd):  # Разобрано в ReadMe
+    try:
+        if bhv in (0,10):#User is making a choice (Which lang to use adding words)
+            userd['act'][1] = 1 if bhv == 0 else 11
+            userd['act'].append(message)
+
+            tempOUT = open(PATH1 + 'someos','r').readlines()[4][:-1]
+            tempKEY = k.SKey
+        elif bhv in (1,11):#User send a word pair to add in dict
+            message = message.lower()
+            for pair in message.split('\n'):
+                words = pair.split('-')
+                if len(words)!=2:
+                    tempOUT = open(PATH1 + 'someos','r').readlines()[5][:-1]
+                else:
+                    tempOUT = random.choice(open(PATH1 + 'addwords','r').readlines())
+                    if words[0][-1] == ' ': words[0] = words[0][:-1]
+                    if words[1][0] == ' ': words[1] = words[1][1:]
+                    userd['dict'][ userd['act'][2] ].append([words[0],words[1]])
+            tempKEY = k.SKey
+        else:
+            tempOUT = 'Что-то где-то не так, попытайся еще но по другому'
+            tempKEY = k.SKey
+    except:
+        print('Addwords function panic')
+        tempOUT = 'No way! (failed to start AF) System restarted'
+        userd = zeros(userd)
+        tempKEY = k.MKey
+    return userd,tempOUT,tempKEY
+
+def edywoF(message,bhv,userd):  #Editing menu
+    try:
+        ans = { k.addW: (['addwo',10],'Окей, но всё по порядку, %s =) Какой язык?'%userd['name'],k.buildkey(1, userd['dict'].keys())),
+                k.chaN: (['intro',10],'Как я могу к тебе обращаться теперь?', k.SKey ),
+                k.edyD: (['edydi',10],'Выбирай',k.buildkey(1, userd['dict'].keys())),
+                k.addL: (['edydi',15],'Какой язык добавляем? =)',k.SKey),
+                k.delL: (['edydi',16],'Какой язык удалить?',k.buildkey(1, userd['dict'].keys())),
+                k.delW: (['edydi',17],'Что удалить? Напиши точно как в словаре, например Любовь-Love',k.SKey)}
+        if message in ans.keys():
+            userd['act'],tempOUT,tempKEY = ans[message]
+        else:
+            userd['act'] = ['edywo',0]
+            tempOUT = 'Я не совсем тебя понимаю'
+            tempKEY = k.EKey
+    except:
+        userd['act'] = ['edywo',0]
+        print('Edit function panic')
+        tempOUT = '(failed to start EF) System restarted'
+        tempKEY = k.EKey
+    return userd,tempOUT,tempKEY
+
+def edydiF(message,bhv,userd):  #Editing menu actions
+    try:
+            
+        if bhv == 10: edMenu[10] = (['edydi',11, message],'На что меняем?',k.SKey)
+        
+        if bhv in edMenu.keys():
+            tempOUT,tempKEY = edMenu[bhv][1:]
+            if bhv == 10: userd['act'].append(message) #User made a choice which name of language to change
+            elif bhv == 11: #User send what we should replace
+                userd['dict'][message] = userd['dict'].pop( userd['act'][2] )
+            elif bhv == 15: userd['dict'][message] = [] #User send what language we should add
+            elif bhv == 16: userd['dict'].pop(message)  #User asks to delete dictionary
+            elif bhv == 17:
+                words = message.lower().split('-')
+                for language in userd['dict']:
+                    if words in userd['dict'][language]:
+                        userd['dict'][language].remove(words)
+                        tempKEY = k.EKey
+                        tempOUT = 'Удалила!=)'
+                        edMenu[bhv][0] = ['edywo',0]
+                        break
+            userd['act'] = edMenu[bhv][0]
+        else:
+            tempOUT = 'Я не совсем тебя понимаю'
+            tempKEY = k.EKey
+    except:
+        userd['act'] = ['edywo',0]
+        print('EditDICT function panic')
+        tempOUT = '(failed to start EFD) System restarted'
+        tempKEY = k.EKey
+    return userd,tempOUT,tempKEY
+
+def playnF(message,bhv,userd):  #Playing function
+    try:
+        if bhv == 0:
+            if message in (k.lovL,k.evoL):
+                userd['chkt'] = 1 if message == k.lovL else 2
+
+                userd['act'] = ['playn',1]
+                tempOUT = random.choice(open(PATH1+'chkt','r').readlines())
+                tempKEY = k.buildkey(0, userd['dict'].keys())
+            else:
+                tempOUT = 'Ты что-то делаешь не так.'
+                tempKEY = k.CTKey
+        elif bhv == 1:
+            if message in (userd['dict'].keys()) or message == 'Проверь по всем':
+                userd['chlan'] = message
+
+                userd['act'] = ['playn',2]
+                tempOUT = 'Ок, записала =) Как будем проверять?'
+                tempKEY = k.CT2Key
+            else:
+                tempOUT = 'Ты что-то делаешь не так, дорогуша'
+                tempKEY = k.buildkey(0, userd['dict'].keys())
+        elif bhv == 2:
+            tempOUT = ''
+            if message == k.allL:
+                userd['chkt2'] = 3
+                userd['act'] = ['playn',3]
+                userd['cdict'] = gm.formdict(userd['chkt'],userd['chlan'],userd['chkt2'],userd['dict'])
+            elif message == k.lsnL or message == k.ranL:
+                userd['chkt2'] = 1 if message == k.lsnL else 2
+                x = userd['dict'][min(userd['dict'])]
+                tempOUT = 'Загадай число от 1 до %d'%(len(x))
+                tempKEY = k.SKey
+            elif message.isdigit():
+                userd['act'] = ['playn',3]
+                userd['cdict'] = gm.formdict(userd['chkt'],userd['chlan'],userd['chkt2'],userd['dict'],int(message))
+            else:
+                tempOUT = 'Ты что-то делаешь не так.'
+                tempKEY = k.CT2Key
+            
+            if not tempOUT: userd,tempOUT,tempKEY = gm.startgame(userd)
+
+        elif bhv == 3:
+            if message.lower() == userd['cdict'][0][1]: tempOUT = 'Правильно! '
+            else:
+                userd['wdict'].append(userd['cdict'][0])
+                tempOUT = 'Ошибка! '
+                userd['wansw'] += 1
+            userd['cdict'].remove(userd['cdict'][0])
+            tempOUT += 'Точность: %.1f\n'%(((userd['stlen']-userd['wansw'])/userd['stlen'])*100)
+            if userd['cdict']:
+                tempOUT += 'Следующее слово: %s (%s)'%(userd['cdict'][0][0],userd['cdict'][0][2])
+                tempKEY = k.SKey
+            else:
+                tempOUT += 'Поздравляю, мы закончили!'
+                if userd['wansw']>0:
+                    userd['act'] = ['playn',4]
+                    tempOUT += '\nЖелаешь провести работу над ошибками(%d), %s?'%(len(userd['wdict']),userd['name'])
+                    tempKEY = k.YNKey
+                else:
+                    userd = zeros(userd)
+                    tempKEY = k.MKey
+        elif bhv == 4:
+            if message == k.noL:
+                tempOUT = random.choice(open(PATH1 + 'endgame').readlines())
+                tempOUT += '\nЗапомни и больше не ошибайся:\n'
+                for w1,w2,lan in userd['wdict']:
+                    tempOUT += '%s - %s (%s)\n'%(w1,w2,lan)
+                userd = zeros(userd)
+                tempKEY = k.MKey
+            elif message == k.yeL:
+                userd['cdict'] = userd['wdict'][:]
+                userd,tempOUT,tempKEY = gm.startgame(userd)
+        else:
+            tempOUT = 'Что-то ты делаешь не так. Давай сначала'
+            tempKEY = k.MKey
+            userd = zeros(userd)
+    except:
+        userd = zeros(userd)
+        print('Playing function panic')
+        tempOUT = '(failed to start PF) System restarted'
+        tempKEY = k.MKey
+    return userd,tempOUT,tempKEY
+
+def remmiF(message,bhv,userd):
+    try:
+        now = datetime.datetime.now()
+        if bhv == 0:
+            userd['act'] = ['remmi',1]
+            userd['remi'] = [message]
+
+            tempOUT = "Супер, записала, теперь укажи дату в формате %s, где день и месяц разделены пробелом.\nИли выбери на клавиатуре"%now.strftime('%d %m')
+            tempKEY = k.REKey
+        elif bhv == 1:
+            userd['act'] = ['remmi',2]
+            if message == k.todL:
+                userd['remi'].append(now.month)
+                userd['remi'].append(now.day)
+            elif message.lower() == "завтра":
+                tomorrow = now + datetime.timedelta(days=1)
+                userd['remi'].append(tomorrow.month)
+                userd['remi'].append(tomorrow.day)
+            elif message[-1:].isdigit():
+                dt = [int(x) for x in message.split()]
+                userd['remi'].append(dt[1])
+                userd['remi'].append(dt[0])
+            tempOUT = "А теперь укажи время дня в формате %s, где час и минута разделены пробелом."%now.strftime('%H %M')
+            tempKEY = k.SKey
+        elif bhv == 2:
+            userd['act'] = ['mainm',0]
+            dt = [int(x) for x in message.split()]
+            userd['remi'].append(dt[0])
+            userd['remi'].append(dt[1])
+            if os.path.isfile(ptr):tmpr = pload('reminder')
+            else: tmpr = []
+            z = userd['remi'][1:]
+            z.append(userd['id'])
+            z.append(userd['remi'][0])
+            tmpr.append(z)
+            tmpr.sort()
+            print(tmpr)
+            pdump('reminder',tmpr)
+            tempOUT,tempKEY ='Хорошо, %s. Я напомню'%userd['name'], k.MKey
+        else:
+            tempOUT = 'Что-то ты делаешь не так. Давай сначала'
+            tempKEY = k.MKey
+            userd = zeros(userd)
+    except:
+        userd = zeros(userd)
+        print('Reminders adding function panic')
+        tempOUT = '(failed to start RF) System restarted'
+        tempKEY = k.MKey
+    return userd,tempOUT,tempKEY
+
+
+def formanswer(uid,message):
+    OUTM=OUTK=False
+    now = datetime.datetime.now()
+    if os.path.isfile(PATH1+str(uid)+'.pkl'):
+        userd = pload(uid)
+    else:
+        userd = {   'id': uid,
+                    'act': ['intro',0],
+                    'dict': {},
+                    'chkt': 0,
+                    'chlan': 'NONE',
+                    'chkt2':0,
+                    'cdict':[],
+                    'wdict':[],
+                    'stlen':0,
+                    'wansw':0,
+                    'remi':'NONE'}
+    #System restart
+    if message == 'restart1':
+        userd = zeros(userd)
+        OUTM,OUTK = 'Система перезагружена',k.MKey
+    elif message[0:7].lower() == 'спасибо' and userd['act'][0] not in ('playn','addwo') :
+            OUTM = random.choice(open(PATH1+'welcome','r').readlines())
+    #Backward navigation in menu
+    elif message == k.gatB:
+        OUTM,OUTK = ksNacts[tuple(userd['act'][:2])]
+        if userd['act'][1] == 0:
+            userd['act'] = ['mainm',0]
+        elif userd['act'][1] in (10,15,16,17):
+            userd['act'] = ['edywo',0]
+        else:
+            userd['act'] = userd['act'][:2]
+            userd['act'][1] -= 1
+        if OUTK in (0,1):
+            OUTK = k.buildkey(OUTK,userd['dict'].keys())
+    #Call function with dictionary. Instead of IF_ELSE blocks
+    else:
+        userd,OUTM,OUTK = calfunc[userd['act'][0]](message,userd['act'][1],userd) 
+    pdump(uid,userd)
+    print(userd)
+
+    #Write first saving date
+    if os.path.isfile(ptw):wtfst = pload('writefirst')
+    else: wtfst = {}
+    
+    wtfst[uid] = [now.month,now.day, now.hour,now.minute]
+    pdump('writefirst',wtfst)
+
+    if OUTM:
+        if OUTK: newmes(uid,OUTM,OUTK)
+        else: newmes(uid,OUTM)
+
 
 def newmes(uid,message,*keyboard): #ФУНКЦИЯ ОТПРАВКИ СООБЩЕНИЙ
     if keyboard:
@@ -365,19 +406,117 @@ def newmes(uid,message,*keyboard): #ФУНКЦИЯ ОТПРАВКИ СООБЩЕ
                                 'message':message,'keyboard':keyboard[0].get_keyboard()})
     else:vk.method('messages.send',{'user_id' :uid,'random_id': get_random_id(),'message':message})
 
-def pdump(uid,idtem): #ФУНКЦИЯ СОХРАНЕНИЯ ДАННЫХ ПОЛЬЗОВАТЕЛЯ НА ДИСК
-    with open(path + str(uid)+'.pkl','wb') as f: pickle.dump(idtem,f)
-def pload(uid): #ФУНКЦИЯ ЗАГРУЗКИ ДАННЫХ ПОЛЬЗОВАТЕЛЯ С ДИСКА 
-    with open(path + str(uid)+'.pkl','rb') as f: return pickle.load(f)
+def zeros(ud): #ОБНУЛЕНИЕ ПЕРЕМЕННЫХ
+    ud['act'] = ['mainm',0]
+    ud['chkt'] = 0
+    ud['chkt2'] = 0
+    ud['stlen'] = 0
+    ud['wansw'] = 0
+    ud['chlan'] = 'NONE'
+    ud['cdict'] = []
+    ud['wdict'] = []
+    ud['wdict'] = []
+    ud['remi'] = 'NONE'
+    return ud
+def pdump(fNAME,dLOC): #ФУНКЦИЯ СОХРАНЕНИЯ ДАННЫХ ПОЛЬЗОВАТЕЛЯ НА ДИСК
+    with open(PATH1 + str(fNAME)+'.pkl','wb') as f: pickle.dump(dLOC,f)
+def pload(fNAME): #ФУНКЦИЯ ЗАГРУЗКИ ДАННЫХ ПОЛЬЗОВАТЕЛЯ С ДИСКА 
+    with open(PATH1 + str(fNAME)+'.pkl','rb') as f: return pickle.load(f)
+
+    
+
+def WriteFirst():#Function for reminders and writing first
+    global fibcount
+    fibcount +=1
+    nowt = datetime.datetime.now()
+
+    print(nowt.strftime('%d-%m-%Y\t%H:%M'))
+
+    dtm = [nowt.month,nowt.day,nowt.hour,nowt.minute]
+    if fibcount == 90:
+        newmes(214708790,'All good!')
+        fibcount = 0
+    
+    if os.path.isfile(ptw):
+        wtfst = pload('writefirst')
+        if wtfst:
+            for uid in wtfst.keys():
+                if (dtm[0]>wtfst[uid][0] or dtm[1]>wtfst[uid][1]) and (dtm[2] >= wtfst[uid][2] and dtm[3] > wtfst[uid][3]):
+                    tTp = { 'chkt':2,
+                            'chlan':'Проверь по всем',
+                            'chkt2':2,
+                            'act':['playn',2],
+                            }
+
+                    ud = pload(uid)
+                    ud = zeros(ud)
+                    for key in tTp.keys():
+                        ud[key] = tTp[key]
+                    
+                    x = ud['dict'][min(ud['dict'])]
+                    tempOUT = 'Загадай число от 1 до %d'%(len(x))
+                    tempKEY = k.SKey
+                    newmes(uid,tempOUT,tempKEY)
+                    pdump(uid,ud)
+        else:
+            print('Wtfst db is empty')
+    else:
+        print('No wtfst db yet')
+    
+    if os.path.isfile(ptr):
+        remDB = pload('reminder')
+        if remDB:
+            for reminder in remDB[:]:
+                remdat = reminder[0:4]
+                if dtm[0]==remdat[0] and dtm[1]==remdat[1]:
+                    if (dtm[2]==remdat[2] and dtm[3]>=remdat[3]) or (dtm[2]>remdat[2]):
+                        hey = random.choice(open(PATH1 +'hey','r').readlines())
+                        rem = random.choice(open(PATH1 +'remitxt','r').readlines())
+                        for text in (hey,reminder[-1],rem):
+                            newmes(reminder[-2],text)
+                        remDB.remove(reminder)
+            pdump('reminder',remDB)
+        else:
+            print('Reminder db is empty')
+    else:
+        print('No reminder db yet')
+
+    threading.Timer(60, WriteFirst).start()
+
+
+
+calfunc = { 'intro':introF,
+            'mainm':mainmF,
+            'addwo':addwoF,
+            'edywo':edywoF,
+            'edydi':edydiF,
+            'playn':playnF,
+            'remmi':remmiF}
 
 print('Second thread creating...')
-wt=WriteFirst()
-print('System ready')
-newmes(214708790,'System ready!')
+WriteFirst()
+print('Checking for update...')
+uptxt = open(PATH1 + 'update','r').readlines()
+if uptxt:
+    ids = os.listdir(PATH1)
+    pkls = filter(lambda x: x.endswith('.pkl'), ids) 
+    for idd in ids:
+        if idd[:2].isdigit():
+            uidd = idd[:-4]
+            newmes(uidd,uptxt,k.MKey)
+    open(PATH1+'update','w').writelines('')
+    print('Update information send')
+else:
+    print('No updates')
+
+print('System is ready')
 while True:#ПОЛУЧАЕМ НОВЫЕ СООБЩЕНИЯ В ЦИКЛЕ
     try:
         for event in longpoll.listen():
             if event.to_me:
-                if event.type == VkEventType.MESSAGE_NEW: formanswer(event.user_id,event.text)
-    except SystemExit: break
-    except: print('SYSTEM FUCKED UP')
+                if event.type == VkEventType.MESSAGE_NEW: 
+                    formanswer(event.user_id,event.text)
+    except:
+        print('System fucked up with no reason (maybe internet)')
+        time.sleep(15)
+        print('SYSTEM RESTARTED')
